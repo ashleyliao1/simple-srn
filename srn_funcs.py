@@ -19,7 +19,9 @@ class srn:
         if self.activationType=='tanh':
             self.O = np.tanh(inact) # tanh version 
         else:
-            self.O = 1 / (1 + np.exp(-inact)) # sigmoid            
+            self.O = 1 / (1 + np.exp(-inact)) # sigmoid      
+        self.C = self.H
+        return(self.O)
     def iterate(self, vectIn, nIterations): # note: assumes len(self.I) = len(self.O)
         outputs = np.empty((nIterations,4),float)*0
         for i in range(nIterations):
@@ -32,9 +34,34 @@ class srn:
                 self.O = 1 / (1 + np.exp(-inact)) # sigmoid   
             outputs[i,:] = self.O
             vectIn = self.O
+            self.C = self.H
         return(outputs)
+    def iterateSymbolic(self, vectIn, nIterations): # note: assumes len(self.I) = len(self.O)
+        outputs = np.empty((1,nIterations),float)*0
+        for i in range(nIterations):
+            inact = np.matrix(vectIn)*self.wIH + np.matrix(self.C)*self.wCH + self.biasH            
+            self.H = 1 / (1 + np.exp(-inact))        
+            inact = np.matrix(self.H)*self.wHO + self.biasO
+            if self.activationType=='tanh':
+                self.O = np.tanh(inact) # tanh version 
+            else:
+                self.O = 1 / (1 + np.exp(-inact)) # sigmoid   
+            sample = get_activation_sample(self.O)
+            ix = random.choice(sample)
+            outputs[0,i] = ix
+            np.multiply(range(np.shape(self.O)[1]),0)
+            vectIn[ix] = 1
+            self.C = self.H
+        return(outputs)
+    
+def get_activation_sample(vect):
+    counts = np.matrix(np.round(np.multiply(vect,100)))
+    ixSample = []
+    for i in range(np.shape(vect)[1]):
+        ixSample.append([i]*counts[0,i])
+    return(np.concatenate(ixSample))
 
-def pattern_update(vectIn,vectOut,network):
+def pattern_update(vectIn,vectOut,network,train):
     ##########################################################################################
     # calculate activations
     ##########################################################################################       
@@ -51,7 +78,7 @@ def pattern_update(vectIn,vectOut,network):
     ##########################################################################################      
     error = np.subtract(vectOut,network.O)
     if network.activationType=='tanh':        
-        network.error.append(-spatial.distance.cosine(vectsOut[wordIndex],network.O)+1) # cosine
+        network.error.append(-spatial.distance.cosine(vectOut,network.O)+1) # cosine
     else:
         network.error.append(np.mean(np.power(error,2))) # rmse
     ##########################################################################################
@@ -69,22 +96,32 @@ def pattern_update(vectIn,vectOut,network):
     ##########################################################################################
     # apply deltas
     ##########################################################################################       
-    network.wHO = network.wHO + dwHO
-    network.wIH = network.wIH + dwIH
-    network.wCH = network.wCH + dwCH                          
-    network.biasH = network.biasH + network.LR * dH
-    network.biasO = network.biasO + network.LR * dO
-    network.C = network.H # remember context    
+    if train==1:
+        network.wHO = network.wHO + dwHO
+        network.wIH = network.wIH + dwIH
+        network.wCH = network.wCH + dwCH                          
+        network.biasH = network.biasH + network.LR * dH
+        network.biasO = network.biasO + network.LR * dO
+        network.C = network.H # remember context    
+    # here you go!
     return(network)
-    
+
 def train_srn(vectsIn,vectsOut,network,nIterations):    
     wordIndex = 0            
     for i in range(nIterations):        
-        pattern_update(vectsIn[wordIndex],vectsOut[wordIndex],network)        
+        pattern_update(vectsIn[wordIndex],vectsOut[wordIndex],network,train=1)        
         wordIndex = wordIndex + 1 # loop through input if out of info
         if wordIndex>=len(vectsIn):
             wordIndex = 0        
     return(network)
-        
+
+def test_srn(vectsIn,vectsOut,network,nIterations):    
+    wordIndex = 0            
+    for i in range(nIterations):        
+        pattern_update(vectsIn[wordIndex],vectsOut[wordIndex],network,train=0)        
+        wordIndex = wordIndex + 1 # loop through input if out of info
+        if wordIndex>=len(vectsIn):
+            wordIndex = 0        
+    return(network)
 
 
